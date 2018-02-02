@@ -11,8 +11,10 @@ from .protocol.response import (
         SimpleDescriptorResponse,
         Status,
         IndividualAttributeReport,
+        DeviceAnnounce,
         DevicesList,
 )
+from blinker import signal
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ class Manager:
 
     def __init__(self):
         self._devices = []
+        self.cluster_notify = signal('zigate_cluster_notify')
 
     def reset(self):
         logger.info('Resetting Zigate')
@@ -111,10 +114,19 @@ class Manager:
             device = Device(self, response.nwk_address)
             self.discover(device.nwk_address)
         else:
+            self.cluster_notify.send(self, device=device, in_clusters=response.in_clusters, out_clusters=response.out_clusters)
             for cluster in response.in_clusters:
                 cluster = device.add_cluster(cluster, response.endpoint)
                 if cluster:
                     self.discover_cluster(device, cluster)
+
+    @handle_response.register(DeviceAnnounce)
+    def _(self, dev):
+        logger.info("Found announced device %s", dev)
+        device = self.by_ieee_address(dev.ieee_address)
+        if not device:
+            device = Device(self, dev.nwk_address, dev.ieee_address)
+            self.discover(device.nwk_address)
 
     @handle_response.register(DevicesList)
     def _(self, response):

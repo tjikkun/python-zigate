@@ -1,7 +1,7 @@
 import logging
 import struct
 
-
+from ..signals import SIGNAL_DEVICE_ANNOUNCE
 _responses = {}
 _receive_buffer = bytearray()
 logger = logging.getLogger(__name__)
@@ -28,6 +28,29 @@ def register(type_):
         return func
 
     return decorator
+
+
+@register(0x004d)
+class DeviceAnnounce(Response):
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.nwk_address, self.ieee_address, self.mac_cap = \
+                struct.unpack('!HQB', self.data)
+        self.alternate_pan_coordinator = self.mac_cap & 2**0 != 0
+        self.device_type = 'FFD' if self.mac_cap & 2**1 != 0 else 'RFD'
+        self.mains_power = self.mac_cap & 2**2 != 0
+        self.rx_on_when_idle = self.mac_cap & 2**3 != 0
+        self.security_capability = self.mac_cap & 2**6 != 0
+        self.allocate_address = self.mac_cap & 2**7 != 0
+        SIGNAL_DEVICE_ANNOUNCE.send(self)
+
+    def __str__(self):
+        return '<DeviceAnnounce from=0x%04x, ieee_address=0x%016x, alt_pan=%s, device_type=%s,' \
+               ' mains_power=%s, rx_on_when_idle=%s, security_capability=%s, allocate_address=%s>' % (
+                        self.nwk_address, self.ieee_address, self.alternate_pan_coordinator, 
+                        self.device_type, self.mains_power, self.rx_on_when_idle,
+                        self.security_capability, self.allocate_address)
 
 
 @register(0x8046)
@@ -143,6 +166,19 @@ class ActiveEndpointsResponse(Response):
                 self.address, len(self.endpoints))
 
 
+@register(0x8048)
+class LeaveIndication(Response):
+
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        self.ieee_address, self.rejoin_status = \
+                struct.unpack('!QB', self.data)
+
+    def __str__(self):
+        return '<LeaveIndication from=0x%016x, rejoin_status=%d>' % (
+                self.ieee_address, self.rejoin_status)
+
 
 @register(0x8102)
 class IndividualAttributeReport(Response):
@@ -153,7 +189,6 @@ class IndividualAttributeReport(Response):
         attr_struct = struct.Struct('!BHBHHBBH')
         self.seq_nr, self.src_addr, self.endpoint, self.cluster_id, self.attr_enum, self.attr_status, self.atrr_data_type, self.attr_size = \
                 attr_struct.unpack(self.data[:attr_struct.size])
-        logger.debug("%s %s", attr_struct.size, len(self.data[attr_struct.size:]))
         self.data_byte_list = struct.unpack('!%ds' % self.attr_size, self.data[attr_struct.size:])
 
     def __str__(self):

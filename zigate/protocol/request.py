@@ -159,6 +159,7 @@ def set_level(address, level):
 
 @Command(0x0100, raw=True)
 def read_attribute(address, endpoint, cluster_id, attributes, address_mode=0x02, source_endpoint=0x01):
+    logger.debug('blaat %x %x %x %x %x %s' % (address_mode, address, source_endpoint, endpoint, cluster_id, attributes))
     return struct.pack('!BHBBHBBHB%dH' % len(attributes),
             address_mode,
             address,
