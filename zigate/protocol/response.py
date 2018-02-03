@@ -1,7 +1,7 @@
 import logging
 import struct
 
-from ..signals import SIGNAL_DEVICE_ANNOUNCE
+from ..signals import SIGNAL_DEVICE_ANNOUNCE, SIGNAL_ENDPOINT_CHANGED
 _responses = {}
 _receive_buffer = bytearray()
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class SimpleDescriptorResponse(Response):
         data = self.data
 
         self.seq_nr, self.status, self.nwk_address, _, self.endpoint, self.profile, \
-                _, _, in_count = struct.unpack('!BBHBBHHBB', data[:12])
+                self.device_id, _, in_count = struct.unpack('!BBHBBHHBB', data[:12])
 
         data = data[12:]
 
@@ -107,11 +107,13 @@ class SimpleDescriptorResponse(Response):
         if out_count:
             self.out_clusters = struct.unpack('!%dH' % out_count, data[:2 * out_count])
 
+        SIGNAL_ENDPOINT_CHANGED.send(self, profile=self.profile, device_id=self.device_id, in_clusters=self.in_clusters, out_clusters=self.out_clusters)
+
     def __str__(self):
         in_clusters = ['0x%04x' % c for c in sorted(self.in_clusters)]
         out_clusters = ['0x%04x' % c for c in sorted(self.out_clusters)]
-        return '<SimpleDescriptorResponse nwk_address=0x%04x, endpoint=0x%02x, in_clusters=[%s], out_clusters=[%s]>' % (
-                self.nwk_address, self.endpoint, in_clusters, out_clusters)
+        return '<SimpleDescriptorResponse nwk_address=0x%04x, endpoint=0x%02x, profile=0x%04x, device_id=0x%04x, in_clusters=[%s], out_clusters=[%s]>' % (
+                self.nwk_address, self.endpoint, self.profile, self.device_id, in_clusters, out_clusters)
 
 
 @register(0x8015)
